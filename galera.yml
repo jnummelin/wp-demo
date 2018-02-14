@@ -1,0 +1,61 @@
+stack: jussi/galera
+version: 0.1.0
+expose: mariadb-lb
+variables:
+  mariadb_affinity:
+    type: string
+    default: label!=no-mariadb
+    from:
+      env: MARIADB_AFFINITY
+      prompt: Affinity rule for MariaDB Galera
+  mysql_root_pwd:
+    type: string
+    from:
+      vault: ${STACK}-mysql-pwd
+      random_string: 24
+    to:
+      vault: ${STACK}-mysql-pwd
+  mysql_xtrabackup_pwd:
+    type: string
+    from:
+      vault: ${STACK}-xtrabackup-pwd
+      random_string: 24
+    to:
+      vault: ${STACK}-xtrabackup-pwd
+
+services:
+  mariadb-lb:
+    image: kontena/lb:latest
+    instances: 2
+    mem_limit: 128m
+    affinity:
+      - "{{ mariadb_affinity }}"
+  mariadb-galera:
+    image: severalnines/mariadb:latest
+    instances: 3
+    affinity:
+      - "{{ mariadb_affinity }}"
+    deploy:
+      wait_for_port: 3306
+    secrets:
+      - secret: ${STACK}-mysql-pwd
+        name: MYSQL_ROOT_PASSWORD
+        type: env
+      - secret: ${STACK}-xtrabackup-pwd
+        name: XTRABACKUP_PASSWORD
+        type: env
+    environment:
+      DISCOVERY_SERVICE: etcd.kontena.local:2379
+      CLUSTER_NAME: "${STACK}"
+      KONTENA_LB_MODE: tcp
+      KONTENA_LB_INTERNAL_PORT: 3306
+      KONTENA_LB_EXTERNAL_PORT: 3306
+    links:
+      - mariadb-lb
+    volumes:
+      - galera-data:/var/lib/mysql
+
+
+volumes:
+  galera-data: # scope=instance
+    external: true
